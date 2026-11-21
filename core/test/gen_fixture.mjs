@@ -31,6 +31,16 @@ try {
     `publicKey=${publicKey}`, `app=${r.appId}`, `platform=${r.platform}`, `version=${r.version}`,
     `sha256=${r.sha256}`, `size=${r.size}`, `signature=${r.signature}`, '',
   ].join('\n'));
+
+  // The /v1/check body exactly as Node's JSON.stringify (what the server uses) would send it.
+  // The changelog is deliberately nasty: quotes, backslashes, tabs, newlines, control char, accents, emoji.
+  const changelog = 'Fixes:\n- "quoted" text\t(tab)\n- backslash \\ and C:\\Apps\n- café ☕ 🚀\u0001end';
+  writeFileSync(join(outDir, 'changelog.txt'), changelog);
+  writeFileSync(join(outDir, 'check_response.json'), JSON.stringify({
+    update: true, version: r.version, sha256: r.sha256, size: r.size, signature: r.signature,
+    changelog, mandatory: false,
+    url: 'https://r2.example/get/locked/android/1.1.0/artifact.bin?sig=abc%2Fdef&x=1',
+  }));
   console.log('fixture written to', outDir);
 } finally {
   rmSync(tmp, { recursive: true, force: true });

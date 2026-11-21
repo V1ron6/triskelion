@@ -1,0 +1,4 @@
+Fixes:
+- "quoted" text	(tab)
+- backslash \ and C:\Apps
+- café ☕ 🚀end

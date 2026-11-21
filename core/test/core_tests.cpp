@@ -1,4 +1,3 @@
-// Dependency-free test runner: CHECK counts failures, main returns non-zero if any.
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -6,22 +5,13 @@
 #include <sstream>
 #include <string>
 
+#include "check.hpp"
 #include "triskelion/decide.hpp"
 #include "triskelion/verify.hpp"
 #include "triskelion/version.hpp"
 
 using namespace triskelion;
 namespace fs = std::filesystem;
-
-static int checks = 0, failures = 0;
-#define CHECK(cond)                                                          \
-  do {                                                                       \
-    checks++;                                                                \
-    if (!(cond)) {                                                           \
-      failures++;                                                            \
-      std::fprintf(stderr, "FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond);  \
-    }                                                                        \
-  } while (0)
 
 static const fs::path kFixtures = FIXTURE_DIR;
 
@@ -140,6 +130,5 @@ int main() {
   test_verify_and_decide(tmp);
 
   fs::remove_all(tmp);
-  std::printf("%d checks, %d failed\n", checks, failures);
-  return failures ? 1 : 0;
+  return report();
 }

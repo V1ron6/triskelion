@@ -27,9 +27,9 @@ app ◄── ping (SSE / FCM) ◄───────────────�
 server/        Express API (Render), NeonDB, Cloudflare R2
   config/      all server config: env loader, .env.example, schema.sql
 tools/sign/    keygen, sign and one-command publish
-core/          C++ client core: version, hash, signature verify, update decision (OpenSSL)
+core/          C++ client core: version, hash, signature verify, update decision, check->download->verify->apply flow (OpenSSL)
 sdk-android/   Kotlin wrapper + FCM    (next)
-sdk-windows/   Windows updater         (next)
+sdk-windows/   Windows updater: WinHTTP client, appliers, install id, triskelion-updater.exe (not yet compiled, see below)
 admin/         React admin panel       (next)
 ```
 
@@ -90,6 +90,25 @@ node core/test/gen_fixture.mjs   # only to regenerate the fixture
 
 The test fixture is produced by `tools/sign`, so the C++ verifier is checked against the exact bytes the real tool signs.
 
+`run_update(config, http, applier)` is the whole flow: check, refuse anything not newer or not https, download, `decide`, then hand the verified file to an `Applier`. Platforms only implement `Http` (sockets) and `Applier` (how to install). Failed or rejected downloads are deleted, and the file name uses the validated `x.y.z`, never raw server text.
+
+## Windows updater
+
+`sdk-windows/` builds `triskelion-updater.exe`. Per app, edit `src/app_config.hpp` (server URL, app id, current version, **public** key, apply mode) and rebuild.
+
+```
+triskelion-updater.exe            check once, apply if verified, exit
+triskelion-updater.exe --watch    check now, every 6 h, and instantly on a broadcast
+```
+
+Two apply modes, chosen at build time with `TRISKELION_APPLY_MODE_INSTALLER`:
+- **Installer (1):** the release is an `.exe`/`.msi`, started silently (`/VERYSILENT /NORESTART` for Inno Setup, `/S` NSIS, `/qn` MSI). The app should exit once `apply` succeeds.
+- **Replace (0):** the release is the app's single `.exe`. The running exe is renamed to `.old`, the new one is copied in, and a failed copy rolls back. New version runs on next launch.
+
+Downloads and the random install id live in `%LOCALAPPDATA%\<app>\`, per user. Build on Windows: `vcpkg install openssl:x64-windows-static`, then CMake with the vcpkg toolchain, from `sdk-windows/`.
+
+**Status: the Windows code has not been compiled or run yet** (the build environment was Linux). The shared logic it calls is tested; the WinHTTP, process-launch and file-swap code is not.
+
 ## Publishing a release
 
 ```bash
@@ -128,6 +147,6 @@ Signed message format: `triskelion:v1\n<app>\n<platform>\n<version>\n<sha256>\n<
 - [x] Server: register, check, stream, publish, staged rollout, yank, audit events
 - [x] Signing tool
 - [x] C++ client core: verification and update decision (network and install steps come with the platform updaters)
-- [ ] Windows updater
+- [x] Windows updater written (needs a first compile and a real end-to-end run on Windows)
 - [ ] Android SDK + FCM
 - [ ] Admin panel

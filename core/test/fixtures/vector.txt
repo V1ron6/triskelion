@@ -1,7 +1,7 @@
-publicKey=nZJlpCF/wnr7szrNVEk23USdNvN5VaKlL/r3TEwRJTc=
+publicKey=d3KuDPeA1oGR+J0+gsVVLHbjUgWcPG/epeKBtzwUBtM=
 app=locked
 platform=android
 version=1.1.0
 sha256=d41d438c379110c7f7b2c561b1f04f26c1b4549110791f8e022f48974280c13e
 size=4096
-signature=A27+X0Yix9/RopCg8CP81awZ8oGuduSS+6uW/+PZpgax7v08Au7vCIS53ca08RockQuHdlcyCaSttHse3rjqBg==
+signature=SNkRCDdxGovYlvUvaf6giXD6i1GkzdU4qPgAc2ZZAcKM+3sfRjnhX9WCsyoErDgClg2p23Nypqz3RTD5RUvrCA==
