@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: triskelion
+    runtime: node
+    rootDir: server
+    buildCommand: npm install --omit=dev
+    startCommand: node src/index.js
+    healthCheckPath: /health
+    plan: starter # free instances spin down when idle, which drops SSE connections
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
