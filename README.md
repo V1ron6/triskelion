@@ -25,8 +25,9 @@ app ◄── ping (SSE / FCM) ◄───────────────�
 
 ```
 server/        Express API (Render), NeonDB, Cloudflare R2
+  config/      all server config: env loader, .env.example, schema.sql
 tools/sign/    keygen, sign and one-command publish
-core/          C++ client core         (next)
+core/          C++ client core: version, hash, signature verify, update decision (OpenSSL)
 sdk-android/   Kotlin wrapper + FCM    (next)
 sdk-windows/   Windows updater         (next)
 admin/         React admin panel       (next)
@@ -61,15 +62,33 @@ Admin (`/admin`, `Authorization: Bearer $ADMIN_TOKEN`)
 
 ```bash
 cd server
-cp .env.example .env        # fill in DATABASE_URL, ADMIN_TOKEN, R2_*
+cp config/.env.example config/.env   # fill in DATABASE_URL, ADMIN_TOKEN, R2_*
 npm install
-npm run migrate             # applies schema.sql to NeonDB
+npm run migrate             # applies config/schema.sql to NeonDB
 npm start
 npm test                    # in-memory Postgres, no external services needed
 ```
 
 Deploy on Render with `render.yaml` (Blueprint). Set the env vars marked `sync: false` in the dashboard.
 Use a paid instance if you want SSE connections to stay alive; free instances spin down when idle.
+
+## Client core
+
+`core/` is the shared C++17 library both platform updaters link. It does no networking; it answers one question: *is this downloaded file safe to install?*
+
+```cpp
+triskelion::Policy policy{"locked", "android", "1.0.0", PUBLIC_KEY_B64};  // baked in at build time
+auto d = triskelion::decide(policy, manifest, downloaded_file);            // Decision::Install or a Reject*
+```
+
+`decide` checks, in order: versions parse, app and platform match the build, the candidate is strictly newer, the Ed25519 signature verifies, then file size and SHA-256. Needs OpenSSL >= 1.1.1 (Windows: `vcpkg install openssl`; Android: prefab `openssl`).
+
+```bash
+cmake -S core -B core/build && cmake --build core/build && ./core/build/core_tests
+node core/test/gen_fixture.mjs   # only to regenerate the fixture
+```
+
+The test fixture is produced by `tools/sign`, so the C++ verifier is checked against the exact bytes the real tool signs.
 
 ## Publishing a release
 
@@ -108,7 +127,7 @@ Signed message format: `triskelion:v1\n<app>\n<platform>\n<version>\n<sha256>\n<
 
 - [x] Server: register, check, stream, publish, staged rollout, yank, audit events
 - [x] Signing tool
-- [ ] C++ client core
+- [x] C++ client core: verification and update decision (network and install steps come with the platform updaters)
 - [ ] Windows updater
 - [ ] Android SDK + FCM
 - [ ] Admin panel

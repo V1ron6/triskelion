@@ -1,4 +1,4 @@
-import { loadConfig } from './config.js';
+import { loadConfig } from '../config/index.js';
 import { createDb } from './db.js';
 import { createStorage } from './storage.js';
 import { createBroadcaster } from './broadcast.js';

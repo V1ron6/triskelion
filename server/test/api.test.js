@@ -25,7 +25,7 @@ const release = (version, extra = {}) => {
 
 async function boot() {
   const db = new PGlite();
-  await db.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
+  await db.exec(readFileSync(new URL('../config/schema.sql', import.meta.url), 'utf8'));
   const storage = {
     presignGet: async (key) => `https://r2.test/get/${key}`,
     presignPut: async (key) => `https://r2.test/put/${key}`,
