@@ -52,6 +52,7 @@ struct CheckResult {
 
 std::string url_encode(std::string_view s);
 std::string build_check_url(const UpdateConfig& cfg);
+std::string build_stream_url(const UpdateConfig& cfg);
 std::string build_register_body(const UpdateConfig& cfg, std::string_view push_token = {});
 CheckResult parse_check_response(const Policy& policy, const HttpResponse& response);
 

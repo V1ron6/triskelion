@@ -115,6 +115,22 @@ export function adminRoutes({ db, storage, broadcaster, adminToken }) {
     res.json({ release: rows[0], broadcast: await broadcast(rows[0]) });
   });
 
+  // Who is running what: one row per app/platform/channel/version, for the admin overview.
+  r.get('/installs', async (_req, res) => {
+    const { rows } = await db.query(
+      `SELECT app_id, platform, channel, version, COUNT(*)::int AS count, MAX(last_seen) AS last_seen
+       FROM installs GROUP BY app_id, platform, channel, version
+       ORDER BY app_id, platform, channel, version`,
+    );
+    res.json(rows);
+  });
+
+  r.get('/events', async (req, res) => {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const { rows } = await db.query('SELECT id, at, kind, app_id, detail FROM events ORDER BY id DESC LIMIT $1', [limit]);
+    res.json(rows);
+  });
+
   // Stop offering a bad release. Clients never downgrade, so recovery = publish a higher fixed version.
   r.post('/releases/:id/yank', async (req, res) => {
     const { rows } = await db.query(

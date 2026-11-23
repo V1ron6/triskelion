@@ -117,21 +117,64 @@ bool WinHttpClient::download(const std::string& url, const std::filesystem::path
   return n == 0 && !out.fail();  // n != 0 would mean the last read failed. Size and hash are checked by the core.
 }
 
-void WinHttpClient::stream(const std::string& url, const std::function<void()>& on_update, const std::atomic<bool>& stop) {
+WinHttpStream::WinHttpStream() {
+  session_ = WinHttpOpen(L"Triskelion/0.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
+                         WINHTTP_NO_PROXY_BYPASS, 0);
+  // Receive timeout must exceed the server's 25 s keepalive, or an idle stream would look dead.
+  if (session_) WinHttpSetTimeouts(session_, 5000, 5000, 10000, 60000);
+}
+
+WinHttpStream::~WinHttpStream() {
+  if (session_) WinHttpCloseHandle(session_);
+}
+
+void WinHttpStream::abort() {
+  std::lock_guard<std::mutex> lock(m_);
+  aborted_ = true;
+  if (active_) {
+    WinHttpCloseHandle(active_);  // makes a blocked WinHttpReadData in run() fail immediately
+    active_ = nullptr;
+  }
+}
+
+void WinHttpStream::run(const std::string& url, const std::function<void()>& on_update) {
   if (!session_) return;
+  {
+    std::lock_guard<std::mutex> lock(m_);
+    if (aborted_) return;
+  }
+
   Request r = open(session_, url, L"GET", nullptr);
   if (r.status != 200) return;
+
+  // From here the request handle is closed by hand, through the one guarded path below.
+  HINTERNET req = r.req.release();
+  {
+    std::lock_guard<std::mutex> lock(m_);
+    if (aborted_) {
+      WinHttpCloseHandle(req);
+      return;
+    }
+    active_ = req;
+  }
 
   std::string pending;
   std::vector<char> buf(4096);
   DWORD n = 0;
-  while (!stop && read_chunk(r.req.get(), buf.data(), static_cast<DWORD>(buf.size()), n) && n > 0) {
+  while (read_chunk(req, buf.data(), static_cast<DWORD>(buf.size()), n) && n > 0) {
     pending.append(buf.data(), n);
+    // The ping content is never trusted or parsed: any "update" event just means "check now".
     for (std::size_t at; (at = pending.find("event: update")) != std::string::npos;) {
       on_update();
       pending.erase(0, at + 13);
     }
     if (pending.size() > 8192) pending.erase(0, pending.size() - 64);  // keepalive noise; keep a tail for split markers
+  }
+
+  std::lock_guard<std::mutex> lock(m_);
+  if (active_ == req) {  // abort() already closed it otherwise
+    WinHttpCloseHandle(req);
+    active_ = nullptr;
   }
 }
 

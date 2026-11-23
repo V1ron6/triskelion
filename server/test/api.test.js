@@ -138,3 +138,30 @@ test('publish, broadcast, pull, rollout, yank, channels', async () => {
     assert.equal((await t.call('GET', '/v1/check?app=locked&platform=android&version=banana&install=' + INSTALL_A, null, null)).status, 400);
   } finally { await t.close(); }
 });
+
+test('admin overview: installs grouped by version, events newest first with a clamped limit', async () => {
+  const t = await boot();
+  try {
+    await t.call('POST', '/admin/apps', { id: 'locked', name: 'Locked', publicKey });
+    await t.register(INSTALL_A, '1.0.0');
+    await t.register(INSTALL_B, '1.0.0');
+    await t.register('cccccccc-0000-4000-8000-000000000003', '1.1.0');
+    await t.call('POST', '/admin/releases', release('1.1.0'));
+
+    assert.equal((await t.call('GET', '/admin/installs', null, null)).status, 401);
+    assert.equal((await t.call('GET', '/admin/events', null, 'wrong')).status, 401);
+
+    const installs = (await t.call('GET', '/admin/installs')).body;
+    assert.deepEqual(
+      installs.map((i) => [i.app_id, i.platform, i.version, i.count]),
+      [['locked', 'android', '1.0.0', 2], ['locked', 'android', '1.1.0', 1]],
+    );
+
+    const events = (await t.call('GET', '/admin/events')).body;
+    assert.deepEqual(events.map((e) => e.kind), ['release_published', 'app_created']);
+    assert.equal((await t.call('GET', '/admin/events?limit=1')).body.length, 1);
+    assert.equal((await t.call('GET', '/admin/events?limit=0')).body.length, 2);        // 0 and junk fall back to the default of 50
+    assert.equal((await t.call('GET', '/admin/events?limit=banana')).body.length, 2);
+    assert.equal((await t.call('GET', '/admin/events?limit=99999')).body.length, 2);    // huge values are clamped to 200
+  } finally { await t.close(); }
+});

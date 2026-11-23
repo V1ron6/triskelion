@@ -85,6 +85,10 @@ std::string build_check_url(const UpdateConfig& cfg) {
          "&channel=" + url_encode(cfg.channel);
 }
 
+std::string build_stream_url(const UpdateConfig& cfg) {
+  return base_of(cfg) + "/v1/stream?install=" + url_encode(cfg.install_id);
+}
+
 std::string build_register_body(const UpdateConfig& cfg, std::string_view push_token) {
   std::string body = "{\"install\":" + json_quote(cfg.install_id) + ",\"app\":" + json_quote(cfg.policy.app) +
                      ",\"platform\":" + json_quote(cfg.policy.platform) +

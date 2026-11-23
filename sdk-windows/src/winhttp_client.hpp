@@ -2,16 +2,16 @@
 #include <windows.h>
 #include <winhttp.h>
 
-#include <atomic>
-#include <functional>
+#include <mutex>
 #include <string>
 
+#include "triskelion/client.hpp"
 #include "triskelion/updater.hpp"
 
 namespace triskelion_win {
 
-// Http for the core, on top of WinHTTP. TLS certificates are validated by the OS;
-// WinHTTP refuses redirects from https to http by default.
+// Http for the core on WinHTTP. TLS certificates are validated by the OS, and WinHTTP refuses
+// redirects from https to http by default. Used from the Client's worker thread only.
 class WinHttpClient : public triskelion::Http {
  public:
   WinHttpClient();
@@ -23,13 +23,29 @@ class WinHttpClient : public triskelion::Http {
   triskelion::HttpResponse post_json(const std::string& url, const std::string& body) override;
   bool download(const std::string& url, const std::filesystem::path& dest) override;
 
-  // Blocks on the SSE stream and calls on_update for every "update" event.
-  // Returns when the stream ends, errors, or `stop` is set (checked between reads; the server's
-  // 25 s keepalive bounds how long that takes). The caller reconnects.
-  void stream(const std::string& url, const std::function<void()>& on_update, const std::atomic<bool>& stop);
+ private:
+  HINTERNET session_ = nullptr;
+};
+
+// Broadcast channel over Server-Sent Events. Own session, used from the Client's listener thread only.
+// abort() is sticky and closes the in-flight request so a blocked read returns at once. If it lands
+// while a connection is still being opened it takes effect when the connect attempt times out
+// (about 5 s), because WinHTTP cannot cancel a handle that has not been returned yet.
+class WinHttpStream : public triskelion::Stream {
+ public:
+  WinHttpStream();
+  ~WinHttpStream() override;
+  WinHttpStream(const WinHttpStream&) = delete;
+  WinHttpStream& operator=(const WinHttpStream&) = delete;
+
+  void run(const std::string& url, const std::function<void()>& on_update) override;
+  void abort() override;
 
  private:
   HINTERNET session_ = nullptr;
+  std::mutex m_;
+  HINTERNET active_ = nullptr;  // guarded by m_; closed exactly once, by run() or abort()
+  bool aborted_ = false;        // guarded by m_
 };
 
 }  // namespace triskelion_win
