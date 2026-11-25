@@ -90,6 +90,28 @@ static void test_verify_and_decide(const fs::path& tmp) {
   CHECK(!verify_manifest("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", m));
   CHECK(!verify_manifest("short", m));
 
+  // Key rotation: several comma-separated keys; the signature must verify against any one of them.
+  {
+    const std::string other = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    CHECK(verify_manifest(other + "," + pub, m));            // real key second
+    CHECK(verify_manifest(pub + "," + other, m));            // real key first
+    CHECK(verify_manifest(" " + other + " , " + pub + " ", m));  // whitespace around entries is ignored
+    CHECK(verify_manifest(other + ",," + pub, m));           // empty entries are skipped
+    CHECK(!verify_manifest(other + "," + other, m));         // no key matches
+    CHECK(!verify_manifest("", m));
+    CHECK(!verify_manifest(",", m));
+    CHECK(!verify_manifest(other + ",short", m));            // junk entry alone does not verify
+    { Manifest t = m; t.version = "1.1.1"; CHECK(!verify_manifest(other + "," + pub, t)); }  // tampering still fails
+    std::string nine;                                         // more than 8 keys: refused outright
+    for (int i = 0; i < 8; i++) nine += other + ",";
+    CHECK(verify_manifest(nine.substr(0, nine.size() - 1) + "," + pub, m) == false);
+    std::string eight;
+    for (int i = 0; i < 7; i++) eight += other + ",";
+    CHECK(verify_manifest(eight + pub, m));                   // exactly 8 is fine
+    const auto parts = split_public_keys(" a , b,,c ");
+    CHECK(parts.size() == 3 && parts[0] == "a" && parts[1] == "b" && parts[2] == "c");
+  }
+
   const Policy policy{"locked", "android", "1.0.0", pub};
   CHECK(decide(policy, m, artifact) == Decision::Install);
 

@@ -21,7 +21,7 @@ app ◄── ping (SSE / FCM) ◄───────────────�
 - **The ping carries no update.** It is just `{app, version}`. A forged ping can at worst trigger a check.
 - **Releases are signed offline** with Ed25519. The server verifies the signature on publish, and the client verifies it again on download, so a compromised server or bucket cannot push code to the apps.
 
-See [USAGE_INSTRUCTIONS.md](USAGE_INSTRUCTIONS.md) for the step-by-step guide.
+See [USAGE_INSTRUCTIONS.md](USAGE_INSTRUCTIONS.md) for the step-by-step guide. It covers key rotation and signing from the admin page.
 
 ## Layout
 

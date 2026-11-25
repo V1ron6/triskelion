@@ -18,6 +18,11 @@ const storage = {
 };
 https.createServer({ key: readFileSync(`${certDir}/key.pem`), cert: readFileSync(`${certDir}/cert.pem`) }, (req, res) => {
   const key = decodeURIComponent(req.url.replace('/blob/', '').split('?')[0]);
+  // Like the CORS rule you set on the real R2 bucket: lets the admin page in a browser PUT the file.
+  res.setHeader('access-control-allow-origin', '*');
+  res.setHeader('access-control-allow-methods', 'PUT, GET');
+  res.setHeader('access-control-allow-headers', '*');
+  if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
   if (req.method === 'PUT') {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));

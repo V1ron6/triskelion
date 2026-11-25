@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -28,6 +29,11 @@ std::optional<std::string> sha256_file_hex(const std::filesystem::path& file);
 std::string manifest_message(const Manifest& m);
 
 // Ed25519 check of the manifest signature against the app's embedded public key (base64, 32 bytes).
-bool verify_manifest(std::string_view public_key_b64, const Manifest& m);
+// `public_keys` is one base64 Ed25519 public key, or several separated by commas (key rotation: the
+// build trusts the current key and the next one). The signature must verify against at least one.
+// More than kMaxPublicKeys entries, or none, never verifies.
+constexpr size_t kMaxPublicKeys = 8;
+std::vector<std::string> split_public_keys(std::string_view list);
+bool verify_manifest(std::string_view public_keys, const Manifest& m);
 
 }  // namespace triskelion

@@ -84,7 +84,22 @@ std::string manifest_message(const Manifest& m) {
          std::to_string(m.size);
 }
 
-bool verify_manifest(std::string_view public_key_b64, const Manifest& m) {
+std::vector<std::string> split_public_keys(std::string_view list) {
+  std::vector<std::string> out;
+  size_t start = 0;
+  while (start <= list.size()) {
+    size_t comma = list.find(',', start);
+    if (comma == std::string_view::npos) comma = list.size();
+    std::string_view part = list.substr(start, comma - start);
+    while (!part.empty() && (part.front() == ' ' || part.front() == '\t' || part.front() == '\n' || part.front() == '\r')) part.remove_prefix(1);
+    while (!part.empty() && (part.back() == ' ' || part.back() == '\t' || part.back() == '\n' || part.back() == '\r')) part.remove_suffix(1);
+    if (!part.empty()) out.emplace_back(part);
+    start = comma + 1;
+  }
+  return out;
+}
+
+static bool verify_with_key(std::string_view public_key_b64, const Manifest& m) {
   const auto key = base64_decode(public_key_b64);
   const auto sig = base64_decode(m.signature_b64);
   if (!key || key->size() != 32 || !sig || sig->size() != 64) return false;
@@ -97,6 +112,14 @@ bool verify_manifest(std::string_view public_key_b64, const Manifest& m) {
   const std::string msg = manifest_message(m);
   return EVP_DigestVerify(ctx.get(), sig->data(), sig->size(),
                           reinterpret_cast<const unsigned char*>(msg.data()), msg.size()) == 1;
+}
+
+bool verify_manifest(std::string_view public_keys, const Manifest& m) {
+  const auto keys = split_public_keys(public_keys);
+  if (keys.empty() || keys.size() > kMaxPublicKeys) return false;
+  for (const auto& k : keys)
+    if (verify_with_key(k, m)) return true;
+  return false;
 }
 
 }  // namespace triskelion

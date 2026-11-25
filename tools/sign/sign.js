@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Offline release signing + one-command publishing.
 //   node sign.js keygen <keyfile>
+//   node sign.js key-list|key-add|key-retire --app <id> [--public-key <b64>]   (needs TRISKELION_URL, ADMIN_TOKEN)
+//   node sign.js embed <keyfile> [<keyfile>...]   prints the comma-joined public keys to put in the app
 //   node sign.js sign    --key <keyfile> --app <id> --platform <android|windows> --version <x.y.z> --file <artifact>
 //   node sign.js publish --key <keyfile> --app ... --platform ... --version ... --file ... \
 //                        [--channel stable|beta] [--rollout 100] [--min-version x.y.z] [--changelog "..."]
@@ -28,6 +30,26 @@ if (cmd === 'keygen') {
   writeFileSync(file, JSON.stringify(keyfile, null, 2), { mode: 0o600 });
   console.log(`private key written to ${file} (keep it offline, never commit it)`);
   console.log(`public key (register with the app, embed in the client):\n${keyfile.publicKey}`);
+} else if (cmd === 'embed') {
+  if (!rest.length) die('usage: embed <keyfile> [<keyfile>...]');
+  const keys = rest.map((f) => JSON.parse(readFileSync(f, 'utf8')).publicKey);
+  console.log(keys.join(','));
+} else if (cmd === 'key-list' || cmd === 'key-add' || cmd === 'key-retire') {
+  if (!flags.app) die('missing --app');
+  const base = process.env.TRISKELION_URL || die('set TRISKELION_URL');
+  const auth = { authorization: `Bearer ${process.env.ADMIN_TOKEN || die('set ADMIN_TOKEN')}`, 'content-type': 'application/json' };
+  const url = `${base}/admin/apps/${encodeURIComponent(flags.app)}/keys`;
+  let res;
+  if (cmd === 'key-list') res = await fetch(url, { headers: auth });
+  else {
+    if (!flags['public-key']) die('missing --public-key');
+    res = await fetch(cmd === 'key-add' ? url : `${url}/retire`, {
+      method: 'POST', headers: auth, body: JSON.stringify({ publicKey: flags['public-key'] }),
+    });
+  }
+  const text = await res.text();
+  if (!res.ok) die(`${cmd} failed: ${res.status} ${text}`);
+  console.log(text);
 } else if (cmd === 'sign' || cmd === 'publish') {
   for (const k of ['key', 'app', 'platform', 'version', 'file']) if (!flags[k]) die(`missing --${k}`);
   const kf = JSON.parse(readFileSync(flags.key, 'utf8'));
@@ -80,5 +102,5 @@ if (cmd === 'keygen') {
     console.log(`published ${flags.app} ${flags.version} (${flags.platform}), broadcast: ${JSON.stringify(out.broadcast)}`);
   }
 } else {
-  die('commands: keygen | sign | publish');
+  die('commands: keygen | embed | key-list | key-add | key-retire | sign | publish');
 }

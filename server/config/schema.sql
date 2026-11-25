@@ -6,6 +6,17 @@ CREATE TABLE IF NOT EXISTS apps (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Signing keys an app trusts. apps.public_key is the first key; it is copied here on first use so it can be
+-- retired like any other. A release is accepted only if signed by an ACTIVE key.
+CREATE TABLE IF NOT EXISTS app_keys (
+  app_id      TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  public_key  TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retired')),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  retired_at  TIMESTAMPTZ,
+  PRIMARY KEY (app_id, public_key)
+);
+
 CREATE TABLE IF NOT EXISTS releases (
   id            SERIAL PRIMARY KEY,
   app_id        TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,

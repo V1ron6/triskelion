@@ -34,6 +34,19 @@ export function adminRoutes({ db, storage, broadcaster, adminToken }) {
     return broadcaster.notify(targets, { appId: rel.app_id, version: rel.version });
   }
 
+  const isKey = (k) => typeof k === 'string' && Buffer.from(k, 'base64').length === 32;
+
+  // The app's first key lives in apps.public_key; mirror it into app_keys once so it can be retired too.
+  // ON CONFLICT DO NOTHING keeps a retired status from being undone.
+  async function activeKeys(appId) {
+    await db.query(
+      `INSERT INTO app_keys (app_id, public_key) SELECT id, public_key FROM apps WHERE id = $1
+       ON CONFLICT DO NOTHING`, [appId]);
+    const { rows } = await db.query(
+      "SELECT public_key FROM app_keys WHERE app_id = $1 AND status = 'active' ORDER BY created_at", [appId]);
+    return rows.map((k) => k.public_key);
+  }
+
   r.post('/apps', async (req, res) => {
     const { id, name, publicKey } = req.body || {};
     if (!SLUG.test(id || '')) return res.status(400).json({ error: 'bad_id' });
@@ -51,6 +64,42 @@ export function adminRoutes({ db, storage, broadcaster, adminToken }) {
   r.get('/apps', async (_req, res) => {
     const { rows } = await db.query('SELECT id, name, owner, created_at FROM apps ORDER BY created_at');
     res.json(rows);
+  });
+
+  // ---- signing key rotation ----------------------------------------------------------------------
+  // Add the NEXT key before you need it, ship an app version that trusts both, then retire the old one.
+  r.get('/apps/:id/keys', async (req, res) => {
+    if (!(await db.query('SELECT 1 FROM apps WHERE id = $1', [req.params.id])).rows[0]) return res.status(404).json({ error: 'unknown_app' });
+    await activeKeys(req.params.id);
+    const { rows } = await db.query(
+      'SELECT public_key, status, created_at, retired_at FROM app_keys WHERE app_id = $1 ORDER BY created_at', [req.params.id]);
+    res.json(rows);
+  });
+
+  r.post('/apps/:id/keys', async (req, res) => {
+    const { publicKey } = req.body || {};
+    if (!isKey(publicKey)) return res.status(400).json({ error: 'bad_public_key' });
+    if (!(await db.query('SELECT 1 FROM apps WHERE id = $1', [req.params.id])).rows[0]) return res.status(404).json({ error: 'unknown_app' });
+    const keys = await activeKeys(req.params.id);
+    if (keys.length >= 8) return res.status(409).json({ error: 'too_many_keys' }); // the client trusts at most 8
+    const ins = await db.query(
+      'INSERT INTO app_keys (app_id, public_key) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING public_key', [req.params.id, publicKey]);
+    if (!ins.rows.length) return res.status(409).json({ error: 'key_exists' });
+    await log('key_added', req.params.id, publicKey);
+    res.status(201).json({ ok: true, activeKeys: keys.length + 1 });
+  });
+
+  r.post('/apps/:id/keys/retire', async (req, res) => {
+    const { publicKey } = req.body || {};
+    if (!isKey(publicKey)) return res.status(400).json({ error: 'bad_public_key' });
+    if (!(await db.query('SELECT 1 FROM apps WHERE id = $1', [req.params.id])).rows[0]) return res.status(404).json({ error: 'unknown_app' });
+    const keys = await activeKeys(req.params.id);
+    if (!keys.includes(publicKey)) return res.status(404).json({ error: 'no_such_active_key' });
+    if (keys.length === 1) return res.status(409).json({ error: 'last_key' }); // never leave an app unable to publish
+    await db.query(
+      "UPDATE app_keys SET status = 'retired', retired_at = now() WHERE app_id = $1 AND public_key = $2", [req.params.id, publicKey]);
+    await log('key_retired', req.params.id, publicKey);
+    res.json({ ok: true, activeKeys: keys.length - 1 });
   });
 
   // Step 1 of publishing: get a presigned PUT so the artifact goes straight to R2.
@@ -75,10 +124,11 @@ export function adminRoutes({ db, storage, broadcaster, adminToken }) {
     if (!SHA256.test(sha256 || '') || !(Number(size) > 0) || !artifactKey || !signature) return res.status(400).json({ error: 'bad_request' });
     if (!Number.isInteger(rolloutPct) || rolloutPct < 0 || rolloutPct > 100) return res.status(400).json({ error: 'bad_rollout' });
 
-    const app = (await db.query('SELECT public_key FROM apps WHERE id = $1', [appId])).rows[0];
+    const app = (await db.query('SELECT id FROM apps WHERE id = $1', [appId])).rows[0];
     if (!app) return res.status(404).json({ error: 'unknown_app' });
     const msg = manifestMessage({ appId, platform, version, sha256, size: Number(size) });
-    if (!verifySignature(app.public_key, msg, signature)) return res.status(400).json({ error: 'bad_signature' });
+    const keys = await activeKeys(appId);
+    if (!keys.some((k) => verifySignature(k, msg, signature))) return res.status(400).json({ error: 'bad_signature' });
 
     let rel;
     try {

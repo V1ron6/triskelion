@@ -169,7 +169,35 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-Sign in with the server URL and your `ADMIN_TOKEN`. You can see apps, releases, installs per version, and the event log, change the rollout percentage, and yank releases. Publishing stays in the command line on purpose, so the private key never touches a browser.
+Sign in with the server URL and your `ADMIN_TOKEN`. You can see apps, releases, installs per version, and the event log, change the rollout percentage, and yank releases. 
+
+### Signing from the admin page
+
+The **Sign & publish** page lets you publish from the browser. Choose your `.key` file; it is read in the browser and held in memory only. It is never uploaded, never written to storage, and is wiped by **Forget key now**, sign-out, closing or reloading the tab, or 15 idle minutes. The app is hashed and signed in the browser, then uploaded straight to R2.
+
+One-time setup: add this CORS rule to the R2 bucket (Cloudflare dashboard > R2 > bucket > Settings > CORS policy), using your admin address:
+
+```json
+[{"AllowedOrigins":["https://triskelion-admin.vercel.app"],"AllowedMethods":["PUT"],"AllowedHeaders":["*"],"MaxAgeSeconds":3600}]
+```
+
+Honest risk: while a key is loaded, a malicious browser extension or an XSS bug could use it. The admin ships a strict CSP, but for the most sensitive apps keep using `sign.js` offline.
+
+### Rotating a signing key
+
+Apps accept a signature from any of up to 8 keys listed (comma-separated) in `publicKeyB64`.
+
+1. `node tools/sign/sign.js keygen counter-2.key`
+2. Register it: `node tools/sign/sign.js key-add --app counter --public-key <new public key>` (or Apps > Keys in the admin).
+3. Get the value to embed: `node tools/sign/sign.js embed counter.key counter-2.key`. Put it in the app config and ship a build, signed with the **old** key. Wait until most installs have it.
+4. Publish new releases signed with the new key.
+5. `key-retire --app counter --public-key <old key>`.
+
+Check with `key-list --app counter`. The last active key cannot be retired.
+
+Limit: if a key is stolen, apps that only trust that key cannot be moved by a new-key release. So **embed a second, backup key (kept offline) from day one**.
+
+Run `npm run migrate` in `server/` (or paste `server/config/schema.sql` into the Neon SQL editor) so the `app_keys` table exists, otherwise key endpoints and publishing fail.
 
 For hosting, run `npm run build` and put `admin/dist` on any static host, then set the server's `CORS_ORIGIN` to that address.
 

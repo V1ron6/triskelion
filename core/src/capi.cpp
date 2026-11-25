@@ -135,8 +135,18 @@ tri_client* tri_client_create(const tri_config* cfg, const tri_host* host, char*
   const std::string channel = cfg->channel ? cfg->channel : "stable";
   if (channel != "stable" && channel != "beta") { set_err(err, err_len, "channel must be stable or beta"); return nullptr; }
   if (!valid_install_id(cfg->install_id)) { set_err(err, err_len, "install_id must be 16-64 chars of [0-9a-fA-F-]"); return nullptr; }
-  const auto key = base64_decode(cfg->public_key_b64);
-  if (!key || key->size() != 32) { set_err(err, err_len, "public_key_b64 must be a base64 32-byte Ed25519 key"); return nullptr; }
+  {
+    const auto keys = split_public_keys(cfg->public_key_b64);
+    bool ok = !keys.empty() && keys.size() <= kMaxPublicKeys;
+    for (const auto& k : keys) {
+      const auto raw = base64_decode(k);
+      if (!raw || raw->size() != 32) ok = false;
+    }
+    if (!ok) {
+      set_err(err, err_len, "public_key_b64 must be 1-8 comma-separated base64 32-byte Ed25519 keys");
+      return nullptr;
+    }
+  }
   const std::string url = cfg->server_url;
   const bool https = url.rfind("https://", 0) == 0;
   if (!https && !(cfg->allow_insecure_http && url.rfind("http://", 0) == 0)) {

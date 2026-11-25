@@ -10,7 +10,7 @@ struct Policy {
   std::string app;
   std::string platform;         // "android" | "windows"
   std::string current_version;  // x.y.z
-  std::string public_key_b64;   // 32-byte Ed25519 key, base64
+  std::string public_key_b64;   // 32-byte Ed25519 key, base64; or several, comma-separated (rotation)
 };
 
 enum class Decision {

@@ -165,3 +165,54 @@ test('admin overview: installs grouped by version, events newest first with a cl
     assert.equal((await t.call('GET', '/admin/events?limit=99999')).body.length, 2);    // huge values are clamped to 200
   } finally { await t.close(); }
 });
+
+test('key rotation: add a second key, publish with it, retire the first, guard the last key', async () => {
+  const t = await boot();
+  try {
+    const next = generateKeyPairSync('ed25519').privateKey;
+    const nextPub = Buffer.from(next.export({ format: 'jwk' }).x, 'base64url').toString('base64');
+    const releaseWith = (key, version) => {
+      const m = { appId: 'locked', platform: 'android', version, sha256: 'c'.repeat(64), size: 4096 };
+      return { ...m, artifactKey: `locked/android/${version}/x.apk`, signature: sign(null, Buffer.from(manifestMessage(m)), key).toString('base64') };
+    };
+    await t.call('POST', '/admin/apps', { id: 'locked', name: 'Locked', publicKey });
+
+    // one key to start with; it can't be removed
+    assert.deepEqual((await t.call('GET', '/admin/apps/locked/keys')).body.map((k) => [k.public_key, k.status]), [[publicKey, 'active']]);
+    assert.equal((await t.call('POST', '/admin/apps/locked/keys/retire', { publicKey })).body.error, 'last_key');
+
+    // the new key is unknown until added
+    assert.equal((await t.call('POST', '/admin/releases', releaseWith(next, '1.1.0'))).body.error, 'bad_signature');
+    assert.equal((await t.call('POST', '/admin/apps/locked/keys', { publicKey: 'nope' })).status, 400);
+    assert.equal((await t.call('POST', '/admin/apps/nope/keys', { publicKey: nextPub })).status, 404);
+    assert.equal((await t.call('POST', '/admin/apps/locked/keys', { publicKey: nextPub })).status, 201);
+    assert.equal((await t.call('POST', '/admin/apps/locked/keys', { publicKey: nextPub })).body.error, 'key_exists');
+
+    // both keys publish while both are active
+    assert.equal((await t.call('POST', '/admin/releases', releaseWith(next, '1.1.0'))).status, 201);
+    assert.equal((await t.call('POST', '/admin/releases', releaseWith(privateKey, '1.2.0'))).status, 201);
+
+    // retire the original: its signatures stop working, the new key keeps working
+    assert.equal((await t.call('POST', '/admin/apps/locked/keys/retire', { publicKey: 'nope' })).status, 400);
+    assert.equal((await t.call('POST', '/admin/apps/locked/keys/retire', { publicKey })).status, 200);
+    assert.equal((await t.call('POST', '/admin/apps/locked/keys/retire', { publicKey })).body.error, 'no_such_active_key');
+    assert.equal((await t.call('POST', '/admin/releases', releaseWith(privateKey, '1.3.0'))).body.error, 'bad_signature');
+    assert.equal((await t.call('POST', '/admin/releases', releaseWith(next, '1.3.0'))).status, 201);
+    assert.equal((await t.call('POST', '/admin/apps/locked/keys/retire', { publicKey: nextPub })).body.error, 'last_key');
+
+    // a retired key is not revived by later listing, and the history is visible
+    const keys = (await t.call('GET', '/admin/apps/locked/keys')).body;
+    assert.deepEqual(keys.map((k) => k.status).sort(), ['active', 'retired']);
+    assert.equal(keys.find((k) => k.public_key === publicKey).status, 'retired');
+    const kinds = (await t.call('GET', '/admin/events')).body.map((e) => e.kind);
+    assert.ok(kinds.includes('key_added') && kinds.includes('key_retired'));
+
+    // an 8th active key is allowed, a 9th is refused
+    for (let i = 0; i < 7; i++) {
+      const k = generateKeyPairSync('ed25519').privateKey;
+      assert.equal((await t.call('POST', '/admin/apps/locked/keys', { publicKey: Buffer.from(k.export({ format: 'jwk' }).x, 'base64url').toString('base64') })).status, 201);
+    }
+    const extra = generateKeyPairSync('ed25519').privateKey;
+    assert.equal((await t.call('POST', '/admin/apps/locked/keys', { publicKey: Buffer.from(extra.export({ format: 'jwk' }).x, 'base64url').toString('base64') })).body.error, 'too_many_keys');
+  } finally { await t.close(); }
+});

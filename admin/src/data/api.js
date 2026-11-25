@@ -1,6 +1,5 @@
 // The admin model: every call to the Triskelion server lives here. Pages never touch fetch.
-// Publishing is deliberately NOT here: releases are signed offline with tools/sign, so the private
-// key never sits in a browser.
+// Signing happens in data/signing.js and only SIGNATURES come here: the private key is never sent anywhere.
 
 export class ApiError extends Error {
   constructor(status, code) {
@@ -35,6 +34,21 @@ export function createApi({ baseUrl, token, fetchImpl = (...args) => fetch(...ar
     listReleases: (appId) => request('GET', `/admin/releases${appId ? `?appId=${encodeURIComponent(appId)}` : ''}`),
     setRollout: (id, rolloutPct) => request('PATCH', `/admin/releases/${Number(id)}`, { rolloutPct }),
     yankRelease: (id) => request('POST', `/admin/releases/${Number(id)}/yank`),
+    listKeys: (appId) => request('GET', `/admin/apps/${encodeURIComponent(appId)}/keys`),
+    addKey: (appId, publicKey) => request('POST', `/admin/apps/${encodeURIComponent(appId)}/keys`, { publicKey }),
+    retireKey: (appId, publicKey) => request('POST', `/admin/apps/${encodeURIComponent(appId)}/keys/retire`, { publicKey }),
+    uploadUrl: ({ appId, platform, version, filename }) => request('POST', '/admin/upload-url', { appId, platform, version, filename }),
+    publishRelease: (release) => request('POST', '/admin/releases', release),
+    // Straight to storage with the presigned URL (no admin token goes there). The bucket needs a CORS rule for PUT.
+    async uploadArtifact(url, body) {
+      let res;
+      try {
+        res = await fetchImpl(url, { method: 'PUT', body });
+      } catch {
+        throw new ApiError(0, 'upload_blocked');
+      }
+      if (!res.ok) throw new ApiError(res.status, 'upload_failed');
+    },
     listInstalls: () => request('GET', '/admin/installs'),
     listEvents: (limit = 50) => request('GET', `/admin/events?limit=${Number(limit)}`),
   };

@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { KeyRound, Plus } from 'lucide-react';
 import { useAsync } from '../data/useAsync.js';
 import { formatDate } from '../data/format.js';
 import { Empty, ErrorBanner, Loading } from '../components/ui.jsx';
+import KeysPanel from '../components/KeysPanel.jsx';
 
 export default function Apps({ api }) {
   const { loading, data, error, reload } = useAsync(() => api.listApps(), [api]);
   const [form, setForm] = useState({ id: '', name: '', publicKey: '' });
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [openKeys, setOpenKeys] = useState(null);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -35,14 +37,19 @@ export default function Apps({ api }) {
       {data && data.length === 0 && <Empty>No apps yet. Add one below.</Empty>}
       {data && data.length > 0 && (
         <table>
-          <thead><tr><th>Id</th><th>Name</th><th>Owner</th><th>Created</th></tr></thead>
+          <thead><tr><th>Id</th><th>Name</th><th>Owner</th><th>Created</th><th /></tr></thead>
           <tbody>
             {data.map((a) => (
-              <tr key={a.id}><td><code>{a.id}</code></td><td>{a.name}</td><td>{a.owner}</td><td>{formatDate(a.created_at)}</td></tr>
+              <tr key={a.id}>
+                <td><code>{a.id}</code></td><td>{a.name}</td><td>{a.owner}</td><td>{formatDate(a.created_at)}</td>
+                <td><button onClick={() => setOpenKeys(openKeys === a.id ? null : a.id)}><KeyRound size={16} /> Keys</button></td>
+              </tr>
             ))}
           </tbody>
         </table>
       )}
+
+      {openKeys && <KeysPanel key={openKeys} api={api} appId={openKeys} />}
 
       <form className="card form" onSubmit={create}>
         <h3>Add an app</h3>
@@ -54,7 +61,7 @@ export default function Apps({ api }) {
         </label>
         <ErrorBanner error={formError} />
         <button className="primary" disabled={busy}><Plus size={16} /> Add app</button>
-        <p className="hint">Only the public key goes here. The private key stays offline with the signing tool.</p>
+        <p className="hint">Only the public key goes here. The private key is loaded on the Sign & publish page, in memory only.</p>
       </form>
     </section>
   );

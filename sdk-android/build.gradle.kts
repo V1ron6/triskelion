@@ -29,7 +29,9 @@ android {
 
 dependencies {
     // Ed25519 + SHA-256 for the native core (the NDK ships no OpenSSL).
-    implementation("com.android.ndk.thirdparty:openssl:1.1.1w-beta-1")
+    // Override with -Ptriskelion.opensslVersion=<v> if this one is ever pulled from Google Maven.
+    val opensslVersion = (findProperty("triskelion.opensslVersion") as String?) ?: "1.1.1q-beta-1"
+    implementation("com.android.ndk.thirdparty:openssl:$opensslVersion")
     // Wake-up when the app is in the background. Needs google-services.json in the host app.
     implementation("com.google.firebase:firebase-messaging:24.1.0")
     implementation("androidx.core:core-ktx:1.15.0")

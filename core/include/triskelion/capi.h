@@ -65,7 +65,8 @@ typedef struct tri_config {
   const char* app_id;          /* must match the app registered on the server */
   const char* platform;        /* "android" or "windows" */
   const char* current_version; /* x.y.z of THIS build */
-  const char* public_key_b64;  /* PUBLIC Ed25519 key (32 bytes, base64), baked into the build */
+  const char* public_key_b64;  /* PUBLIC Ed25519 key (32 bytes, base64), baked into the build. For key rotation
+                                  give up to 8 keys separated by commas: a release is accepted if any one signed it. */
   const char* channel;         /* "stable" or "beta"; NULL = "stable" */
   const char* install_id;      /* stable random id for this install: 16-64 chars of [0-9a-fA-F-] */
   const char* work_dir;        /* downloads land here; must be private to the app */

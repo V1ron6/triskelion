@@ -1,16 +1,19 @@
 import { useMemo, useState } from 'react';
-import { Activity, Boxes, LayoutDashboard, LogOut, Package } from 'lucide-react';
+import { Activity, Boxes, LayoutDashboard, LogOut, Package, Upload } from 'lucide-react';
+import { keyring } from './data/signing.js';
 import { createApi } from './data/api.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import Login from './pages/Login.jsx';
 import Overview from './pages/Overview.jsx';
 import Apps from './pages/Apps.jsx';
 import Releases from './pages/Releases.jsx';
+import Publish from './pages/Publish.jsx';
 import Events from './pages/Events.jsx';
 
 const PAGES = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, Page: Overview },
   { id: 'releases', label: 'Releases', icon: Package, Page: Releases },
+  { id: 'publish', label: 'Sign & publish', icon: Upload, Page: Publish },
   { id: 'apps', label: 'Apps', icon: Boxes, Page: Apps },
   { id: 'events', label: 'Activity', icon: Activity, Page: Events },
 ];
@@ -41,7 +44,7 @@ export default function App() {
   const api = useMemo(() => (session ? createApi(session) : null), [session]);
 
   const signIn = (s) => { saveSession(s); setSession(s); };
-  const signOut = () => { saveSession(null); setSession(null); };
+  const signOut = () => { keyring.forget(); saveSession(null); setSession(null); };
 
   if (!api) return <Login initialUrl={import.meta.env?.VITE_SERVER_URL || ''} onSignedIn={signIn} />;
 

@@ -181,8 +181,13 @@ static void test_validation(const fs::path& tmp) {
   rejects("bad key", [](Cfg& c) { c.key = "not-a-key"; });
   rejects("short key", [](Cfg& c) { c.key = "AAAA"; });
   rejects("empty key", [](Cfg& c) { c.key = ""; });
+  rejects("junk second key", [](Cfg& c) { c.key = c.key + ",not-a-key"; });
+  rejects("only separators", [](Cfg& c) { c.key = ",,"; });
+  rejects("nine keys", [](Cfg& c) { std::string k = c.key; for (int i = 0; i < 8; i++) k += "," + c.key; c.key = k; });
   rejects("empty work", [](Cfg& c) { c.work = ""; });
 
+  { Cfg c = good; c.key = c.key + "," + c.key; tri_config cfg = c.c();   // two valid keys are accepted
+    tri_client* r = tri_client_create(&cfg, &host, nullptr, 0); CHECK(r != nullptr); tri_client_destroy(r); }
   { Cfg c = good; c.insecure = 1; c.server = "http://localhost:3000"; tri_config cfg = c.c();
     tri_client* r = tri_client_create(&cfg, &host, nullptr, 0); CHECK(r != nullptr); tri_client_destroy(r); }  // dev opt-in, err NULL ok
   { Cfg c = good; c.insecure = 1; c.server = "ftp://x"; tri_config cfg = c.c();
